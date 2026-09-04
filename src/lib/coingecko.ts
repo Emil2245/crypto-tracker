@@ -19,7 +19,7 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
   });
   // Prevent one caller's failure from breaking the queue for the next.
-  queue = run.catch(() => {});
+  queue = run.catch(() => { });
   return run;
 }
 
@@ -84,9 +84,13 @@ export async function getPrices(
 
 /**
  * Fetches USD prices for the given coins, cascading through CoinGecko simple
- * price → CryptoCompare pricemulti for anything CoinGecko didn't return.
+ * price → Binance / KuCoin spot price for anything CoinGecko didn't return.
  * `symbolsByCoin` maps a coinId to its ticker symbol (e.g. "bitcoin" → "BTC")
- * so the CryptoCompare fallback can address the same coin.
+ * so the exchange fallbacks can address the same coin.
+ *
+ * CryptoCompare was removed: its free min-api now requires an API key on
+ * every endpoint (pricemulti included) and always returns a 401/error body
+ * — it was never actually contributing a price.
  */
 export async function getPricesWithFallback(
   coinIds: string[],
@@ -96,32 +100,60 @@ export async function getPricesWithFallback(
   const missing = coinIds.filter((id) => !(id in primary));
   if (missing.length === 0) return primary;
 
-  const symbolMissing = [
-    ...new Set(
-      missing
-        .map((id) => symbolsByCoin[id]?.toUpperCase())
-        .filter((s): s is string => Boolean(s))
-    ),
-  ];
-  if (symbolMissing.length === 0) return primary;
+  // For each missing coin, try Binance and KuCoin in parallel and take
+  // whichever responds first with a valid price.
+  const filled = { ...primary };
 
-  try {
-    const res = await fetch(
-      `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${encodeURIComponent(symbolMissing.join(","))}&tsyms=USD`
-    );
-    if (!res.ok) return primary;
-    const data = await res.json();
-    const filled = { ...primary };
-    for (const id of missing) {
+  await Promise.allSettled(
+    missing.map(async (id) => {
       const sym = symbolsByCoin[id]?.toUpperCase();
-      const price = sym ? data?.[sym]?.USD : undefined;
+      if (!sym) return;
+
+      const [binancePrice, kucoinPrice] = await Promise.all([
+        livePriceFromBinance(sym),
+        livePriceFromKuCoin(sym),
+      ]);
+
+      const price = binancePrice ?? kucoinPrice;
       if (typeof price === "number" && price > 0) {
         filled[id] = price;
       }
-    }
-    return filled;
+    })
+  );
+
+  return filled;
+}
+
+/** Fetches the latest SYMBOL/USDT spot price from Binance's public ticker endpoint. */
+async function livePriceFromBinance(symbol: string): Promise<number | null> {
+  try {
+    const pair = `${symbol}USDT`;
+    const res = await fetch(
+      `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(pair)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const price = parseFloat(data?.price);
+    return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
-    return primary;
+    return null;
+  }
+}
+
+/** Fetches the latest SYMBOL-USDT spot price from KuCoin's public ticker endpoint. */
+async function livePriceFromKuCoin(symbol: string): Promise<number | null> {
+  try {
+    const pair = `${symbol}-USDT`;
+    const res = await fetch(
+      `https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${encodeURIComponent(pair)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.code !== "200000") return null;
+    const price = parseFloat(data?.data?.price);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch {
+    return null;
   }
 }
 
@@ -152,10 +184,15 @@ export interface HistoricalPriceResult {
 }
 
 // A single wrong/stale number from one provider must never reach the ledger,
-// so a price only counts as "real" once two of the three independent sources
-// (CoinGecko, CryptoCompare, Binance) agree within this relative tolerance.
-// Daily closes across venues rarely match to the cent, so this is a percentage
-// band rather than a literal decimal match.
+// so a price only counts as "real" once two of the independent sources
+// (CoinGecko, Binance, Coinbase, KuCoin) agree within this relative
+// tolerance. Daily closes across venues rarely match to the cent, so this is
+// a percentage band rather than a literal decimal match.
+//
+// CryptoCompare was dropped: its free min-api now returns 401 "API key
+// required" on every historical endpoint (it was folded into CoinDesk's paid
+// API), so it was never actually contributing a price — confirmed by hitting
+// both /pricehistorical and /v2/histoday directly.
 const AGREEMENT_TOLERANCE = 0.005;
 
 function pricesAgree(a: number, b: number): boolean {
@@ -163,17 +200,23 @@ function pricesAgree(a: number, b: number): boolean {
   return Math.abs(a - b) / Math.max(a, b) <= AGREEMENT_TOLERANCE;
 }
 
-export const PRICE_PROVIDERS = ["CoinGecko", "CryptoCompare", "Binance"] as const;
+export const PRICE_PROVIDERS = [
+  "CoinGecko",
+  "Binance",
+  "Coinbase",
+  "KuCoin",
+] as const;
 export type PriceProvider = (typeof PRICE_PROVIDERS)[number];
 
 /**
  * Returns the coin's USD price on a specific ISO date (YYYY-MM-DD) by querying
- * CoinGecko, CryptoCompare, and Binance in parallel and requiring at least two
- * of the three to agree (within AGREEMENT_TOLERANCE) before trusting the value.
- * Returns null if fewer than two independent sources corroborate each other —
- * the caller is expected to retry rather than accept an unverified number.
- * `onProgress` fires as soon as each individual provider settles, so callers
- * can show live per-source status instead of one opaque loading state.
+ * CoinGecko, Binance, Coinbase, and KuCoin in parallel and requiring at
+ * least two of the four to agree (within AGREEMENT_TOLERANCE) before trusting
+ * the value. Returns null if fewer than two independent sources corroborate
+ * each other — the caller is expected to retry rather than accept an
+ * unverified number. `onProgress` fires as soon as each individual provider
+ * settles, so callers can show live per-source status instead of one opaque
+ * loading state.
  */
 export async function getPriceOnDate(
   coinId: string,
@@ -193,13 +236,14 @@ export async function getPriceOnDate(
       }
     );
 
-  const [cg, cc, bn] = await Promise.all([
+  const results = await Promise.all([
     track("CoinGecko", cgHistoryPrice(coinId, isoDate)),
-    track("CryptoCompare", cryptoComparePrice(coinSymbol, isoDate)),
     track("Binance", binanceKlinePrice(coinSymbol, isoDate)),
+    track("Coinbase", coinbaseCandlePrice(coinSymbol, isoDate)),
+    track("KuCoin", kucoinKlinePrice(coinSymbol, isoDate)),
   ]);
 
-  const candidates = [cg, cc, bn].filter(
+  const candidates = results.filter(
     (c): c is { price: number; source: PriceProvider } => c !== null
   );
 
@@ -262,21 +306,59 @@ async function binanceKlinePrice(
   }
 }
 
-async function cryptoComparePrice(
+// Coinbase Exchange's public candles endpoint, used purely to corroborate —
+// more independent venues make it more likely two sources agree even when
+// one of the others is rate-limited, symbol-ambiguous, or has no listing.
+// The end bound must land inside the target day (not exactly at midnight) or
+// Coinbase's daily bucketing hands back the *next* day's candle instead.
+async function coinbaseCandlePrice(
   symbol: string,
   isoDate: string
 ): Promise<number | null> {
-  const ts = Math.floor(new Date(isoDate + "T12:00:00Z").getTime() / 1000);
-  if (!Number.isFinite(ts) || !symbol) return null;
-  const sym = symbol.toUpperCase();
+  if (!symbol) return null;
+  const dayStartMs = new Date(isoDate + "T00:00:00Z").getTime();
+  if (!Number.isFinite(dayStartMs)) return null;
+  const dayEndMs = dayStartMs + 24 * 3600 * 1000 - 1000;
+  const product = `${symbol.toUpperCase()}-USD`;
   try {
     const res = await fetch(
-      `https://min-api.cryptocompare.com/data/pricehistorical?fsym=${encodeURIComponent(sym)}&tsyms=USD&ts=${ts}`
+      `https://api.exchange.coinbase.com/products/${encodeURIComponent(product)}/candles?start=${new Date(dayStartMs).toISOString()}&end=${new Date(dayEndMs).toISOString()}&granularity=86400`
     );
     if (!res.ok) return null;
     const data = await res.json();
-    const price = data?.[sym]?.USD;
+    if (!Array.isArray(data) || data.length === 0) return null;
+    // Each candle is [time, low, high, open, close, volume]; take the close.
+    const price = data[0]?.[4];
     return typeof price === "number" && price > 0 ? price : null;
+  } catch {
+    return null;
+  }
+}
+
+// KuCoin's public candles endpoint — another independent venue with broad
+// altcoin coverage (including many symbols Binance/Coinbase don't list).
+// Response rows are [time, open, close, high, low, volume, turnover] — note
+// close is index 2 here, not the OHLC-standard index 4 the other venues use.
+async function kucoinKlinePrice(
+  symbol: string,
+  isoDate: string
+): Promise<number | null> {
+  if (!symbol) return null;
+  const dayStart = Math.floor(new Date(isoDate + "T00:00:00Z").getTime() / 1000);
+  if (!Number.isFinite(dayStart)) return null;
+  const dayEnd = dayStart + 24 * 3600 - 1;
+  const pair = `${symbol.toUpperCase()}-USDT`;
+  try {
+    const res = await fetch(
+      `https://api.kucoin.com/api/v1/market/candles?type=1day&symbol=${encodeURIComponent(pair)}&startAt=${dayStart}&endAt=${dayEnd}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.code !== "200000") return null;
+    const rows = data?.data as string[][] | undefined;
+    if (!rows || rows.length === 0) return null;
+    const price = parseFloat(rows[0][2]);
+    return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
     return null;
   }

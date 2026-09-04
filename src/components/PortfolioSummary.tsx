@@ -10,6 +10,7 @@ import {
   initialValue,
   currentValue,
   valueDifference,
+  averageDailyChange,
 } from "@/lib/calculations";
 import type { Holding } from "@/types";
 
@@ -52,6 +53,14 @@ export function PortfolioSummary({
   const isPositive = totalDiff >= 0;
 
   const todayDelta = deriveTodayDelta(history.data);
+
+  // Sum of each holding's own daily rate, rather than totalDiff over one
+  // shared day-count — holdings bought on different dates shouldn't be
+  // averaged over the same denominator.
+  const avgPerDay = holdings.reduce((sum, h) => {
+    const p = prices[h.coinId];
+    return sum + (p ? averageDailyChange(h, p) : 0);
+  }, 0);
 
   const dollars = Math.floor(totalCurrent);
   const cents = (totalCurrent - dollars).toFixed(2).slice(2);
@@ -146,16 +155,33 @@ export function PortfolioSummary({
           costBasis={totalInvested}
         />
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <StatCard
-            label="Invested"
+            size="primary"
+            label="Day one"
             value={formatCurrency(totalInvested)}
             hint={`across ${holdings.length} ${holdings.length === 1 ? "asset" : "assets"}`}
           />
           <StatCard
-            label="Current value"
+            size="primary"
+            label="Today"
             value={formatCurrency(totalCurrent)}
-            hint="as of now"
+            hint="current value"
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard
+            label="Total change"
+            value={`${isPositive ? "+" : ""}${formatCurrency(totalDiff)}`}
+            hint={`${isPositive ? "▲" : "▼"} ${(pctChange * 100).toFixed(2)}%`}
+            tone={isPositive ? "gain" : "loss"}
+          />
+          <StatCard
+            label="Avg / day"
+            value={`${avgPerDay >= 0 ? "+" : ""}${formatCurrency(avgPerDay)}`}
+            hint="since day one"
+            tone={avgPerDay === 0 ? "neutral" : avgPerDay > 0 ? "gain" : "loss"}
           />
           <StatCard
             label="Today"
@@ -188,11 +214,13 @@ function StatCard({
   value,
   hint,
   tone = "neutral",
+  size = "secondary",
 }: {
   label: string;
   value: string;
   hint: string;
   tone?: "neutral" | "gain" | "loss";
+  size?: "primary" | "secondary";
 }) {
   const color =
     tone === "gain"
@@ -200,11 +228,27 @@ function StatCard({
       : tone === "loss"
         ? "var(--loss)"
         : undefined;
+  const isPrimary = size === "primary";
   return (
-    <div className="rounded-2xl bg-secondary/60 px-4 py-3.5">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <div
+      className={cn(
+        "rounded-2xl bg-secondary/60",
+        isPrimary ? "px-5 py-4" : "px-4 py-3.5"
+      )}
+    >
       <p
-        className="mt-1.5 text-right font-mono tabular text-2xl font-bold tracking-[-0.015em]"
+        className={cn(
+          "font-medium text-muted-foreground",
+          isPrimary ? "text-sm" : "text-xs"
+        )}
+      >
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1.5 text-right font-mono tabular font-bold tracking-[-0.015em]",
+          isPrimary ? "text-3xl" : "text-2xl"
+        )}
         style={{ color }}
       >
         {value}
