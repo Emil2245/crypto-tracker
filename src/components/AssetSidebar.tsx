@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { CoinMark } from "@/components/CoinMark";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import {
   formatCurrency,
   formatAmountCompact,
@@ -26,18 +27,13 @@ import {
   initialValue,
   pctChange,
 } from "@/lib/calculations";
-import type { Holding, TransactionInput } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface AssetSidebarProps {
-  holdings: Holding[];
-  prices: Record<string, number>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  onReorder: (orderedCoinIds: string[]) => void;
-  onAdd: (transaction: TransactionInput) => void;
 }
 
 type SortMode = "custom" | "value-desc" | "value-asc";
@@ -69,15 +65,12 @@ const SORT_MODES: {
   ];
 
 export function AssetSidebar({
-  holdings,
-  prices,
   selectedId,
   onSelect,
   collapsed,
   onToggleCollapsed,
-  onReorder,
-  onAdd,
 }: AssetSidebarProps) {
+  const { holdings, prices, onAdd, onReorder } = usePortfolio();
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("custom");
   const [dragId, setDragId] = useState<string | null>(null);

@@ -26,19 +26,8 @@ import {
   pctChange,
 } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import type { Holding, Transaction, TransactionInput } from "@/types";
-
-interface HoldingsLedgerProps {
-  holdings: Holding[];
-  prices: Record<string, number>;
-  getTransactions: (coinId: string) => Promise<Transaction[]>;
-  onAdd: (transaction: TransactionInput) => void;
-  onUpdateTransaction: (
-    id: number,
-    updates: Partial<Omit<Transaction, "id" | "createdAt">>
-  ) => void;
-  onDelete: (coinId: string) => void;
-}
 
 type FilterKey = "all" | "gainers" | "losers";
 
@@ -59,14 +48,15 @@ function coinSubtext(holding: Holding, days: number): string {
     : base;
 }
 
-export function HoldingsLedger({
-  holdings,
-  prices,
-  getTransactions,
-  onAdd,
-  onUpdateTransaction,
-  onDelete,
-}: HoldingsLedgerProps) {
+export function HoldingsLedger() {
+  const {
+    holdings,
+    prices,
+    getTransactions,
+    onAdd,
+    onUpdateTransaction,
+    onDelete,
+  } = usePortfolio();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showAll, setShowAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("asset");

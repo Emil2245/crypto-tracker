@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { usePortfolioHistory } from "@/hooks/usePortfolioHistory";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import { cn } from "@/lib/utils";
 import {
   formatCurrency,
@@ -13,14 +14,6 @@ import {
   averageDailyChange,
   pctChange,
 } from "@/lib/calculations";
-import type { Holding, TransactionInput } from "@/types";
-
-interface PortfolioSummaryProps {
-  holdings: Holding[];
-  prices: Record<string, number>;
-  loading: boolean;
-  onAdd: (transaction: TransactionInput) => void;
-}
 
 // CoinGecko's free tier caps historical data at 365 days — 730 returns 401.
 const RANGES = [
@@ -31,12 +24,8 @@ const RANGES = [
   { label: "1Y", days: 365 },
 ] as const;
 
-export function PortfolioSummary({
-  holdings,
-  prices,
-  loading,
-  onAdd,
-}: PortfolioSummaryProps) {
+export function PortfolioSummary() {
+  const { holdings, prices, loading, onAdd } = usePortfolio();
   const [rangeIdx, setRangeIdx] = useState(2);
   const days = RANGES[rangeIdx].days;
   const history = usePortfolioHistory(holdings, days, prices);
