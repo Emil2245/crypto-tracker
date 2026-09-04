@@ -7,13 +7,6 @@ const USD_FMT = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-const PCT_FMT = new Intl.NumberFormat("en-US", {
-  style: "percent",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-  signDisplay: "always",
-});
-
 const COMPACT_FMT = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -58,10 +51,6 @@ export function pctChange(current: number, basis: number): number {
 
 export function formatCurrency(value: number): string {
   return USD_FMT.format(value);
-}
-
-export function formatPercent(value: number): string {
-  return PCT_FMT.format(value);
 }
 
 export function formatCompact(value: number): string {

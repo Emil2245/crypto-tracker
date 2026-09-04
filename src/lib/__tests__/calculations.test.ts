@@ -1,7 +1,6 @@
 import { describe, test, expect } from "vitest";
 import {
   formatCurrency,
-  formatPercent,
   formatCompact,
   formatAmountCompact,
   pctChange,
@@ -26,12 +25,6 @@ describe("formatCompact", () => {
   test("formats small crypto values with more decimals", () => {
     const result = formatCompact(0.00001234);
     expect(result).toContain("0.0000");
-  });
-});
-
-describe("formatPercent", () => {
-  test("formats with sign display", () => {
-    expect(formatPercent(0.1234)).toContain("12.34");
   });
 });
 
