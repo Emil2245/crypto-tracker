@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { ChevronDown, Menu, Pencil, Trash2 } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { ChevronDown, Menu, Pencil, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,9 +10,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
 import { DeleteHoldingDialog } from "@/components/DeleteHoldingDialog";
+import { TransactionPickerDialog } from "@/components/TransactionPickerDialog";
+import { CoinDetailDialog } from "@/components/CoinDetailDialog";
 import { CoinMark } from "@/components/CoinMark";
+import { SortHeader, type SortDir } from "@/components/SortHeader";
 import {
   formatCurrency,
+  formatAmountCompact,
   initialValue,
   currentValue,
   valueDifference,
@@ -20,19 +24,23 @@ import {
   averageDailyChange,
 } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
-import type { Holding } from "@/types";
+import type { Holding, Transaction, TransactionInput } from "@/types";
 
 interface HoldingsLedgerProps {
   holdings: Holding[];
   prices: Record<string, number>;
-  onUpdate: (
+  getTransactions: (coinId: string) => Promise<Transaction[]>;
+  onAdd: (transaction: TransactionInput) => void;
+  onUpdateTransaction: (
     id: number,
-    updates: Omit<Holding, "id" | "createdAt" | "updatedAt">
+    updates: Partial<Omit<Transaction, "id" | "createdAt">>
   ) => void;
-  onDelete: (id: number) => void;
+  onDelete: (coinId: string) => void;
 }
 
 type FilterKey = "all" | "gainers" | "losers";
+
+type SortKey = "asset" | "price" | "day1" | "today" | "dayDelta" | "return";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -42,26 +50,49 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 const INITIAL_LIMIT = 5;
 
+function coinSubtext(holding: Holding, days: number): string {
+  const base = `${holding.coinSymbol.toUpperCase()} · ${days}d · ${formatAmountCompact(holding.amount)}`;
+  return holding.transactionCount > 1
+    ? `${base} · ${holding.transactionCount} buys`
+    : base;
+}
+
 export function HoldingsLedger({
   holdings,
   prices,
-  onUpdate,
+  getTransactions,
+  onAdd,
+  onUpdateTransaction,
   onDelete,
 }: HoldingsLedgerProps) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showAll, setShowAll] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("asset");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const filtered = useMemo(() => {
-    if (filter === "all") return holdings;
-    return holdings.filter((h) => {
-      const p = prices[h.coinId];
-      if (!p) return false;
-      const diff = valueDifference(h, p);
-      return filter === "gainers" ? diff >= 0 : diff < 0;
-    });
-  }, [holdings, prices, filter]);
+    let rows = holdings;
+    if (filter === "gainers" || filter === "losers") {
+      rows = holdings.filter((h) => {
+        const p = prices[h.coinId];
+        if (p === undefined) return false;
+        const diff = valueDifference(h, p);
+        return filter === "gainers" ? diff >= 0 : diff < 0;
+      });
+    }
+    return sortHoldings(rows, prices, sortKey, sortDir);
+  }, [holdings, prices, filter, sortKey, sortDir]);
 
   const visible = showAll ? filtered : filtered.slice(0, INITIAL_LIMIT);
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "asset" ? "asc" : "desc");
+    }
+  }
 
   return (
     <Card className="soft-card gap-4 p-7">
@@ -92,22 +123,59 @@ export function HoldingsLedger({
         </div>
 
         {/* Column heads */}
-        <div className="hidden md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] gap-5 border-b border-border px-4 pb-3 text-[0.7rem] font-semibold tracking-wider text-muted-foreground uppercase md:grid">
-          <span>Asset</span>
-          <span className="text-right">Price</span>
-          <span className="text-right">Day one</span>
-          <span className="text-right">Today</span>
-          <span className="text-right">Δ / day</span>
-          <span className="text-right">Total return</span>
+        <div className="hidden gap-5 border-b border-border px-4 pb-3 text-[0.7rem] font-semibold tracking-wider text-muted-foreground uppercase md:grid md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr]">
+          <SortHeader
+            label="Asset"
+            active={sortKey === "asset"}
+            dir={sortDir}
+            onClick={() => toggleSort("asset")}
+          />
+          <SortHeader
+            label="Price"
+            align="right"
+            active={sortKey === "price"}
+            dir={sortDir}
+            onClick={() => toggleSort("price")}
+          />
+          <SortHeader
+            label="Day one"
+            align="right"
+            active={sortKey === "day1"}
+            dir={sortDir}
+            onClick={() => toggleSort("day1")}
+          />
+          <SortHeader
+            label="Today"
+            align="right"
+            active={sortKey === "today"}
+            dir={sortDir}
+            onClick={() => toggleSort("today")}
+          />
+          <SortHeader
+            label="Δ / day"
+            align="right"
+            active={sortKey === "dayDelta"}
+            dir={sortDir}
+            onClick={() => toggleSort("dayDelta")}
+          />
+          <SortHeader
+            label="Total return"
+            align="right"
+            active={sortKey === "return"}
+            dir={sortDir}
+            onClick={() => toggleSort("return")}
+          />
         </div>
 
         <ol className="flex flex-col gap-0.5">
           {visible.map((holding) => (
-            <li key={holding.id}>
+            <li key={holding.coinId}>
               <PositionRow
                 holding={holding}
                 price={prices[holding.coinId]}
-                onUpdate={onUpdate}
+                getTransactions={getTransactions}
+                onAdd={onAdd}
+                onUpdateTransaction={onUpdateTransaction}
                 onDelete={onDelete}
               />
             </li>
@@ -147,16 +215,32 @@ export function HoldingsLedger({
 interface PositionRowProps {
   holding: Holding;
   price?: number;
-  onUpdate: (
+  getTransactions: (coinId: string) => Promise<Transaction[]>;
+  onAdd: (transaction: TransactionInput) => void;
+  onUpdateTransaction: (
     id: number,
-    updates: Omit<Holding, "id" | "createdAt" | "updatedAt">
+    updates: Partial<Omit<Transaction, "id" | "createdAt">>
   ) => void;
-  onDelete: (id: number) => void;
+  onDelete: (coinId: string) => void;
 }
 
-function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
+const PositionRow = React.memo(function PositionRow({
+  holding,
+  price,
+  getTransactions,
+  onAdd,
+  onUpdateTransaction,
+  onDelete,
+}: PositionRowProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTxs, setDetailTxs] = useState<Transaction[]>([]);
+  const [txs, setTxs] = useState<Transaction[]>([]);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+
   const hasPrice = price !== undefined;
   const day1 = initialValue(holding);
   const today = hasPrice ? currentValue(holding, price) : day1;
@@ -170,10 +254,79 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
   const dayColor =
     dayDelta === 0 ? "var(--muted-foreground)" : dayDelta > 0 ? "var(--gain)" : "var(--loss)";
 
+  async function openEdit() {
+    const rows = await getTransactions(holding.coinId);
+    setTxs(rows);
+    if (rows.length <= 1) {
+      setEditingTx(rows[0] ?? null);
+      setEditOpen(true);
+    } else {
+      setPickerOpen(true);
+    }
+  }
+
+  async function openDetail() {
+    const rows = await getTransactions(holding.coinId);
+    setDetailTxs(rows);
+    setDetailOpen(true);
+  }
+
+  function handlePickTransaction(tx: Transaction) {
+    setEditingTx(tx);
+    setEditOpen(true);
+  }
+
+  function handleDetailEdit(tx: Transaction) {
+    setDetailOpen(false);
+    setEditingTx(tx);
+    setEditOpen(true);
+  }
+
+  const addCoin = useMemo(() => ({
+    id: holding.coinId,
+    name: holding.coinName,
+    symbol: holding.coinSymbol,
+    image: holding.coinImage,
+  }), [holding.coinId, holding.coinName, holding.coinSymbol, holding.coinImage]);
+
+  const pickerCoin = useMemo(() => ({
+    coinId: holding.coinId,
+    coinName: holding.coinName,
+    coinSymbol: holding.coinSymbol,
+    coinImage: holding.coinImage,
+  }), [holding.coinId, holding.coinName, holding.coinSymbol, holding.coinImage]);
+
+  const menuItems = (suffix: string) => (
+    <>
+      <DropdownMenuItem id={`edit-holding-${suffix}${holding.coinId}`} onClick={openEdit}>
+        <Pencil className="h-3.5 w-3.5" />
+        Edit
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        id={`add-tx-${suffix}${holding.coinId}`}
+        onClick={() => setAddOpen(true)}
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add transaction
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        id={`delete-holding-${suffix}${holding.coinId}`}
+        variant="destructive"
+        onClick={() => setDeleteOpen(true)}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete
+      </DropdownMenuItem>
+    </>
+  );
+
   return (
     <>
       {/* ── MOBILE card (hidden on md+) ─────────────────────────────── */}
-      <div className="flex flex-col gap-2.5 rounded-2xl bg-secondary/40 p-3.5 transition-colors hover:bg-secondary md:hidden">
+      <div
+        onClick={openDetail}
+        className="flex cursor-pointer flex-col gap-2.5 rounded-2xl bg-secondary/40 p-3.5 transition-colors hover:bg-secondary active:bg-secondary/70 md:hidden"
+      >
         {/* Header row: coin + menu */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
@@ -187,7 +340,7 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
                 {holding.coinName}
               </p>
               <p className="mt-0.5 truncate font-mono text-[0.68rem] font-medium text-muted-foreground">
-                {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
+                {coinSubtext(holding, days)}
               </p>
             </div>
           </div>
@@ -199,29 +352,14 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
                     variant="ghost"
                     size="icon-sm"
                     className="rounded-xl"
-                    id={`row-menu-mob-${holding.id}`}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    id={`row-menu-mob-${holding.coinId}`}
                   >
                     <Menu className="h-3.5 w-3.5" />
                   </Button>
                 }
               />
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  id={`edit-holding-mob-${holding.id}`}
-                  onClick={() => setEditOpen(true)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  id={`delete-holding-mob-${holding.id}`}
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
+              <DropdownMenuContent align="end">{menuItems("mob-")}</DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
@@ -263,7 +401,18 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
       </div>
 
       {/* ── DESKTOP row (hidden below md) ───────────────────────────── */}
-      <div className="group hidden md:grid md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] items-center gap-5 rounded-2xl px-4 py-3 transition-colors hover:bg-secondary">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={openDetail}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openDetail();
+          }
+        }}
+        className="group hidden md:grid md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] cursor-pointer items-center gap-5 rounded-2xl px-4 py-3 transition-colors hover:bg-secondary active:bg-secondary/70"
+      >
         {/* Asset */}
         <div className="flex items-center gap-4">
           <CoinMark
@@ -276,7 +425,7 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
               {holding.coinName}
             </p>
             <p className="mt-0.5 truncate font-mono tabular text-[0.7rem] font-medium text-muted-foreground">
-              {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
+              {coinSubtext(holding, days)}
             </p>
           </div>
         </div>
@@ -333,29 +482,14 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
                     variant="ghost"
                     size="icon-sm"
                     className="rounded-xl"
-                    id={`row-menu-${holding.id}`}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    id={`row-menu-${holding.coinId}`}
                   >
                     <Menu className="h-3.5 w-3.5" />
                   </Button>
                 }
               />
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  id={`edit-holding-${holding.id}`}
-                  onClick={() => setEditOpen(true)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  id={`delete-holding-${holding.id}`}
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
+              <DropdownMenuContent align="end">{menuItems("")}</DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
@@ -363,27 +497,92 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
 
       {/* Shared dialogs (rendered once, outside both layouts) */}
       <AddHoldingDialog
-        editHolding={holding}
-        onSubmit={(data) => holding.id && onUpdate(holding.id, data)}
+        key={editingTx?.id ?? "none"}
+        editTransaction={editingTx ?? undefined}
+        onSubmit={(data) => {
+          if (editingTx?.id) onUpdateTransaction(editingTx.id, data);
+        }}
         open={editOpen}
         onOpenChange={setEditOpen}
+      />
+      <AddHoldingDialog
+        key={`add-${holding.coinId}`}
+        lockedCoin={addCoin}
+        onSubmit={onAdd}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+      />
+      <TransactionPickerDialog
+        coin={pickerCoin}
+        transactions={txs}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onSelect={handlePickTransaction}
       />
       <DeleteHoldingDialog
         holding={holding}
         price={price}
-        onConfirm={() => holding.id && onDelete(holding.id)}
+        onConfirm={() => onDelete(holding.coinId)}
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
       />
+      <CoinDetailDialog
+        holding={holding}
+        transactions={detailTxs}
+        price={price}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onEdit={handleDetailEdit}
+      />
     </>
   );
-}
+});
 
-function formatShort(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
-  if (n >= 10_000) return (n / 1_000).toFixed(1) + "k";
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+function sortHoldings(
+  holdings: Holding[],
+  prices: Record<string, number>,
+  key: SortKey,
+  dir: SortDir
+): Holding[] {
+  const factor = dir === "asc" ? 1 : -1;
+  const rows = [...holdings];
+  rows.sort((a, b) => {
+    let cmp = 0;
+    switch (key) {
+      case "asset":
+        cmp = a.coinName.localeCompare(b.coinName);
+        break;
+      case "price": {
+        const pa = prices[a.coinId];
+        const pb = prices[b.coinId];
+        cmp = (pa ?? 0) - (pb ?? 0);
+        break;
+      }
+      case "day1":
+        cmp = initialValue(a) - initialValue(b);
+        break;
+      case "today": {
+        const pa = prices[a.coinId] ?? 0;
+        const pb = prices[b.coinId] ?? 0;
+        cmp = currentValue(a, pa) - currentValue(b, pb);
+        break;
+      }
+      case "dayDelta": {
+        const pa = prices[a.coinId] ?? 0;
+        const pb = prices[b.coinId] ?? 0;
+        cmp = averageDailyChange(a, pa) - averageDailyChange(b, pb);
+        break;
+      }
+      case "return": {
+        const pa = prices[a.coinId] ?? 0;
+        const pb = prices[b.coinId] ?? 0;
+        cmp = valueDifference(a, pa) - valueDifference(b, pb);
+        break;
+      }
+    }
+    return cmp * factor;
+  });
+  return rows;
 }
 
 /** A small label + value pair used inside the mobile card's 2×2 stats grid. */
