@@ -1,10 +1,10 @@
 import { Wallet, ShieldCheck, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
-import type { Holding } from "@/types";
+import type { TransactionInput } from "@/types";
 
 interface EmptyStateProps {
-  onAdd: (holding: Omit<Holding, "id" | "createdAt" | "updatedAt">) => void;
+  onAdd: (transaction: TransactionInput) => void;
 }
 
 export function EmptyState({ onAdd }: EmptyStateProps) {

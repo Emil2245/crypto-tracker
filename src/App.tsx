@@ -9,15 +9,21 @@ import { AssetSidebar } from "@/components/AssetSidebar";
 import { PriceIndicator } from "@/components/PriceIndicator";
 import { EmptyState } from "@/components/EmptyState";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import type { Holding } from "@/types";
+import { Logo } from "@/components/icons/Logo";
 
 const SIDEBAR_COLLAPSED_KEY = "ledger:sidebarCollapsed";
 
 function App() {
-  const { holdings, addHolding, updateHolding, deleteHolding, reorderHoldings } =
-    useHoldings();
+  const {
+    holdings,
+    getTransactions,
+    addTransaction,
+    updateTransaction,
+    deleteCoin,
+    reorderHoldings,
+  } = useHoldings();
   const { prices, loading, lastUpdated, error, refetch } = usePrices(holdings);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -27,13 +33,6 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
-
-  function handleUpdate(
-    id: number,
-    data: Omit<Holding, "id" | "createdAt" | "updatedAt">
-  ) {
-    updateHolding(id, data);
-  }
 
   return (
     <div className="min-h-screen text-foreground">
@@ -45,16 +44,7 @@ function App() {
               className="flex h-10 w-10 items-center justify-center rounded-2xl shadow-sm"
               style={{ background: "var(--primary)" }}
             >
-              <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden>
-                <path
-                  d="M50 16 L84 50 L50 84 L16 50 Z"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="7"
-                  strokeLinejoin="round"
-                />
-                <path d="M50 16 L84 50 L50 84 Z" fill="white" />
-              </svg>
+              <Logo />
             </div>
             <div>
               <p className="text-base font-bold tracking-tight">Ledger</p>
@@ -77,7 +67,7 @@ function App() {
 
         {holdings.length === 0 ? (
           <div className="pt-8 sm:pt-16">
-            <EmptyState onAdd={addHolding} />
+            <EmptyState onAdd={addTransaction} />
           </div>
         ) : (
           <div
@@ -96,20 +86,22 @@ function App() {
               collapsed={collapsed}
               onToggleCollapsed={() => setCollapsed((c) => !c)}
               onReorder={reorderHoldings}
-              onAdd={addHolding}
+              onAdd={addTransaction}
             />
             <section className="flex min-w-0 flex-col gap-4 lg:gap-6">
               <PortfolioSummary
                 holdings={holdings}
                 prices={prices}
                 loading={loading}
-                onAdd={addHolding}
+                onAdd={addTransaction}
               />
               <HoldingsLedger
                 holdings={holdings}
                 prices={prices}
-                onUpdate={handleUpdate}
-                onDelete={deleteHolding}
+                getTransactions={getTransactions}
+                onAdd={addTransaction}
+                onUpdateTransaction={updateTransaction}
+                onDelete={deleteCoin}
               />
             </section>
           </div>

@@ -21,21 +21,23 @@ import { CoinMark } from "@/components/CoinMark";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
 import {
   formatCurrency,
+  formatAmountCompact,
   currentValue,
   initialValue,
+  pctChange,
 } from "@/lib/calculations";
-import type { Holding } from "@/types";
+import type { Holding, TransactionInput } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface AssetSidebarProps {
   holdings: Holding[];
   prices: Record<string, number>;
-  selectedId: number | null;
-  onSelect: (id: number | null) => void;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  onReorder: (orderedIds: number[]) => void;
-  onAdd: (holding: Omit<Holding, "id" | "createdAt" | "updatedAt">) => void;
+  onReorder: (orderedCoinIds: string[]) => void;
+  onAdd: (transaction: TransactionInput) => void;
 }
 
 type SortMode = "custom" | "value-desc" | "value-asc";
@@ -78,8 +80,8 @@ export function AssetSidebar({
 }: AssetSidebarProps) {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("custom");
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [overId, setOverId] = useState<number | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
 
   const sorted = useMemo(() => {
@@ -112,15 +114,15 @@ export function AssetSidebar({
     );
   }, [sorted, query]);
 
-  function handleDrop(targetId: number) {
-    if (dragId === null || dragId === targetId) {
+  function handleDrop(targetCoinId: string) {
+    if (dragId === null || dragId === targetCoinId) {
       setDragId(null);
       setOverId(null);
       return;
     }
-    const ids = sorted.map((h) => h.id).filter((x): x is number => x !== undefined);
+    const ids = sorted.map((h) => h.coinId);
     const from = ids.indexOf(dragId);
-    const to = ids.indexOf(targetId);
+    const to = ids.indexOf(targetCoinId);
     if (from === -1 || to === -1) return;
     const next = ids.slice();
     next.splice(from, 1);
@@ -145,15 +147,12 @@ export function AssetSidebar({
           {sorted.map((holding) => {
             const price = prices[holding.coinId];
             const cur = price ? currentValue(holding, price) : initialValue(holding);
-            const pct =
-              price && initialValue(holding) > 0
-                ? (cur - initialValue(holding)) / initialValue(holding)
-                : 0;
-            const isActive = selectedId === holding.id;
+            const pct = price ? pctChange(cur, initialValue(holding)) : 0;
+            const isActive = selectedId === holding.coinId;
             return (
               <button
-                key={holding.id}
-                onClick={() => onSelect(isActive ? null : holding.id ?? null)}
+                key={holding.coinId}
+                onClick={() => onSelect(isActive ? null : holding.coinId)}
                 className={cn(
                   "flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 transition-all",
                   isActive
@@ -225,12 +224,12 @@ export function AssetSidebar({
             <ScrollArea className="max-h-[640px] w-full">
               <ul className="flex flex-col items-center gap-2 py-1">
                 {sorted.map((holding) => {
-                  const isActive = selectedId === holding.id;
+                  const isActive = selectedId === holding.coinId;
                   return (
-                    <li key={holding.id}>
+                    <li key={holding.coinId}>
                       <button
                         onClick={() =>
-                          onSelect(isActive ? null : holding.id ?? null)
+                          onSelect(isActive ? null : holding.coinId)
                         }
                         className={cn(
                           "flex h-11 w-11 items-center justify-center rounded-2xl transition-all",
@@ -361,36 +360,33 @@ export function AssetSidebar({
                 const cur = price
                   ? currentValue(holding, price)
                   : initialValue(holding);
-                const pct =
-                  price && initialValue(holding) > 0
-                    ? (cur - initialValue(holding)) / initialValue(holding)
-                    : 0;
-                const isActive = selectedId === holding.id;
-                const isDragging = dragId === holding.id;
-                const isOver = overId === holding.id;
+                const pct = price ? pctChange(cur, initialValue(holding)) : 0;
+                const isActive = selectedId === holding.coinId;
+                const isDragging = dragId === holding.coinId;
+                const isOver = overId === holding.coinId;
                 const canDrag = sortMode === "custom" && !query;
 
                 return (
                   <li
-                    key={holding.id}
+                    key={holding.coinId}
                     draggable={canDrag}
                     onDragStart={(e) => {
                       if (!canDrag) return;
-                      setDragId(holding.id ?? null);
+                      setDragId(holding.coinId);
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     onDragOver={(e) => {
                       if (!canDrag || dragId === null) return;
                       e.preventDefault();
-                      setOverId(holding.id ?? null);
+                      setOverId(holding.coinId);
                     }}
                     onDragLeave={() => {
-                      if (overId === holding.id) setOverId(null);
+                      if (overId === holding.coinId) setOverId(null);
                     }}
                     onDrop={(e) => {
                       if (!canDrag) return;
                       e.preventDefault();
-                      if (holding.id !== undefined) handleDrop(holding.id);
+                      handleDrop(holding.coinId);
                     }}
                     onDragEnd={() => {
                       setDragId(null);
@@ -406,7 +402,7 @@ export function AssetSidebar({
                   >
                     <div
                       className={cn(
-                        "group/row grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl px-3 py-3 transition-colors",
+                        "group/row grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-3 py-3 transition-colors",
                         isActive
                           ? "bg-accent-soft shadow-[inset_3px_0_0_var(--primary)]"
                           : "hover:bg-secondary"
@@ -424,10 +420,10 @@ export function AssetSidebar({
                       )}
                       <button
                         onClick={() =>
-                          onSelect(isActive ? null : holding.id ?? null)
+                          onSelect(isActive ? null : holding.coinId)
                         }
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        id={`asset-${holding.id}`}
+                        id={`asset-${holding.coinId}`}
                       >
                         <CoinMark
                           symbol={holding.coinSymbol}
@@ -439,26 +435,51 @@ export function AssetSidebar({
                             {holding.coinName}
                           </p>
                           <p className="mt-0.5 truncate font-mono tabular text-[0.7rem] font-medium text-muted-foreground">
-                            {formatCompactAmount(holding.amount)}{" "}
+                            {formatAmountCompact(holding.amount)}{" "}
                             {holding.coinSymbol.toUpperCase()}
+                            {holding.transactionCount > 1
+                              ? ` · ${holding.transactionCount} buys`
+                              : ""}
                           </p>
                         </div>
                       </button>
-                      <div className="text-right">
-                        <p className="font-mono tabular text-sm font-semibold">
-                          {price ? formatCurrency(cur) : "—"}
-                        </p>
-                        {price && (
-                          <p
-                            className="mt-0.5 font-mono tabular text-[0.7rem] font-semibold"
-                            style={{
-                              color: pct >= 0 ? "var(--gain)" : "var(--loss)",
-                            }}
-                          >
-                            {pct >= 0 ? "+" : ""}
-                            {(pct * 100).toFixed(2)}%
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className="font-mono tabular text-sm font-semibold">
+                            {price ? formatCurrency(cur) : "—"}
                           </p>
-                        )}
+                          {price && (
+                            <p
+                              className="mt-0.5 font-mono tabular text-[0.7rem] font-semibold"
+                              style={{
+                                color: pct >= 0 ? "var(--gain)" : "var(--loss)",
+                              }}
+                            >
+                              {pct >= 0 ? "+" : ""}
+                              {(pct * 100).toFixed(2)}%
+                            </p>
+                          )}
+                        </div>
+                        <AddHoldingDialog
+                          onSubmit={onAdd}
+                          lockedCoin={{
+                            id: holding.coinId,
+                            name: holding.coinName,
+                            symbol: holding.coinSymbol,
+                            image: holding.coinImage,
+                          }}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="rounded-xl opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100"
+                              aria-label={`Add transaction for ${holding.coinName}`}
+                              id={`sidebar-add-tx-${holding.coinId}`}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </div>
                   </li>
@@ -476,11 +497,4 @@ export function AssetSidebar({
       </Card>
     </>
   );
-}
-
-function formatCompactAmount(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
-  if (n >= 10_000) return (n / 1_000).toFixed(1) + "k";
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
