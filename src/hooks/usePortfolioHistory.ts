@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import useSWR from "swr";
 import { getMarketChart } from "@/lib/coingecko";
 import type { Holding } from "@/types";
@@ -23,6 +24,11 @@ export function usePortfolioHistory(
   const coinIds = [...new Set(holdings.map((h) => h.coinId))].sort();
   const key = coinIds.length ? ["history", coinIds.join(","), days] : null;
 
+  const pricesRef = useRef(currentPrices);
+  useEffect(() => {
+    pricesRef.current = currentPrices;
+  });
+
   const { data, isLoading, error } = useSWR(
     key,
     async () => {
@@ -32,7 +38,7 @@ export function usePortfolioHistory(
           prices: await getMarketChart(id, days),
         }))
       );
-      return buildTimeline(charts, holdings, currentPrices);
+      return buildTimeline(charts, holdings, pricesRef.current);
     },
     { refreshInterval: HISTORY_REFRESH_INTERVAL, revalidateOnFocus: false }
   );
