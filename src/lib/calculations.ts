@@ -1,5 +1,29 @@
 import type { Holding } from "@/types";
 
+const USD_FMT = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const PCT_FMT = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  signDisplay: "always",
+});
+
+const COMPACT_FMT = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const COMPACT_DETAIL_FMT = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 8,
+});
+
 export function initialValue(holding: Holding): number {
   return holding.amount * holding.purchasePrice;
 }
@@ -28,34 +52,28 @@ export function averageDailyChange(
   return valueDifference(holding, currentPrice) / daysSincePurchase(holding);
 }
 
+export function pctChange(current: number, basis: number): number {
+  return basis > 0 ? (current - basis) / basis : 0;
+}
+
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return USD_FMT.format(value);
 }
 
 export function formatPercent(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "percent",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    signDisplay: "always",
-  }).format(value);
+  return PCT_FMT.format(value);
 }
 
 export function formatCompact(value: number): string {
-  if (Math.abs(value) >= 1) {
-    return new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-  // For small crypto amounts, show more decimals
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 8,
-  }).format(value);
+  return Math.abs(value) >= 1
+    ? COMPACT_FMT.format(value)
+    : COMPACT_DETAIL_FMT.format(value);
+}
+
+/** Compacts large coin amounts into "12.5M" / "3.2k" style strings for tight layouts. */
+export function formatAmountCompact(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 10_000) return (n / 1_000).toFixed(1) + "k";
+  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
