@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
@@ -11,14 +11,15 @@ import {
   currentValue,
   valueDifference,
   averageDailyChange,
+  pctChange,
 } from "@/lib/calculations";
-import type { Holding } from "@/types";
+import type { Holding, TransactionInput } from "@/types";
 
 interface PortfolioSummaryProps {
   holdings: Holding[];
   prices: Record<string, number>;
   loading: boolean;
-  onAdd: (holding: Omit<Holding, "id" | "createdAt" | "updatedAt">) => void;
+  onAdd: (transaction: TransactionInput) => void;
 }
 
 // CoinGecko's free tier caps historical data at 365 days — 730 returns 401.
@@ -40,30 +41,55 @@ export function PortfolioSummary({
   const days = RANGES[rangeIdx].days;
   const history = usePortfolioHistory(holdings, days, prices);
 
-  const totalInvested = holdings.reduce((sum, h) => sum + initialValue(h), 0);
-  const totalCurrent = holdings.reduce((sum, h) => {
-    const p = prices[h.coinId];
-    return sum + (p ? currentValue(h, p) : initialValue(h));
-  }, 0);
-  const totalDiff = holdings.reduce((sum, h) => {
-    const p = prices[h.coinId];
-    return sum + (p ? valueDifference(h, p) : 0);
-  }, 0);
-  const pctChange = totalInvested > 0 ? totalDiff / totalInvested : 0;
-  const isPositive = totalDiff >= 0;
+  const {
+    totalInvested,
+    totalCurrent,
+    totalDiff,
+    totalPctChange,
+    isPositive,
+    avgPerDay,
+    dollars,
+    cents,
+  } = useMemo(() => {
+    const totalInvested = holdings.reduce(
+      (sum, h) => sum + initialValue(h),
+      0
+    );
+    const totalCurrent = holdings.reduce((sum, h) => {
+      const p = prices[h.coinId];
+      return sum + (p ? currentValue(h, p) : initialValue(h));
+    }, 0);
+    const totalDiff = holdings.reduce((sum, h) => {
+      const p = prices[h.coinId];
+      return sum + (p ? valueDifference(h, p) : 0);
+    }, 0);
+    const totalPctChange = pctChange(totalCurrent, totalInvested);
+    const isPositive = totalDiff >= 0;
+
+    // Sum of each holding's own daily rate, rather than totalDiff over one
+    // shared day-count — holdings bought on different dates shouldn't be
+    // averaged over the same denominator.
+    const avgPerDay = holdings.reduce((sum, h) => {
+      const p = prices[h.coinId];
+      return sum + (p ? averageDailyChange(h, p) : 0);
+    }, 0);
+
+    const dollars = Math.floor(totalCurrent);
+    const cents = (totalCurrent - dollars).toFixed(2).slice(2);
+
+    return {
+      totalInvested,
+      totalCurrent,
+      totalDiff,
+      totalPctChange,
+      isPositive,
+      avgPerDay,
+      dollars,
+      cents,
+    };
+  }, [holdings, prices]);
 
   const todayDelta = deriveTodayDelta(history.data);
-
-  // Sum of each holding's own daily rate, rather than totalDiff over one
-  // shared day-count — holdings bought on different dates shouldn't be
-  // averaged over the same denominator.
-  const avgPerDay = holdings.reduce((sum, h) => {
-    const p = prices[h.coinId];
-    return sum + (p ? averageDailyChange(h, p) : 0);
-  }, 0);
-
-  const dollars = Math.floor(totalCurrent);
-  const cents = (totalCurrent - dollars).toFixed(2).slice(2);
 
   return (
     <Card className="soft-card gap-5 p-5 sm:gap-6 sm:p-8">
@@ -111,7 +137,7 @@ export function PortfolioSummary({
               <span className="opacity-40">·</span>
               <span className="font-mono tabular text-sm font-semibold">
                 {isPositive ? "+" : ""}
-                {(pctChange * 100).toFixed(2)}%
+                {(totalPctChange * 100).toFixed(2)}%
               </span>
               <span className="text-xs font-medium opacity-70">
                 since acquisition
@@ -178,7 +204,7 @@ export function PortfolioSummary({
           <StatCard
             label="Total Δ"
             value={`${isPositive ? "+" : ""}${formatCurrency(totalDiff)}`}
-            hint={`${isPositive ? "▲" : "▼"} ${(pctChange * 100).toFixed(2)}%`}
+            hint={`${isPositive ? "▲" : "▼"} ${(totalPctChange * 100).toFixed(2)}%`}
             tone={isPositive ? "gain" : "loss"}
           />
           <StatCard
