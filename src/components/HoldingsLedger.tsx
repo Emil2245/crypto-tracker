@@ -171,119 +171,211 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
     dayDelta === 0 ? "var(--muted-foreground)" : dayDelta > 0 ? "var(--gain)" : "var(--loss)";
 
   return (
-    <div className="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl px-2 py-3 transition-colors hover:bg-secondary md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] md:gap-5 md:px-4">
-      {/* Asset */}
-      <div className="flex items-center gap-3.5 md:gap-4">
-        <CoinMark
-          symbol={holding.coinSymbol}
-          image={holding.coinImage}
-          size={40}
-        />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight md:text-[0.95rem]">
-            {holding.coinName}
-          </p>
-          <p className="mt-0.5 truncate font-mono tabular text-[0.7rem] font-medium text-muted-foreground">
-            {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
-          </p>
-        </div>
-      </div>
-
-      {/* Price now (unit) */}
-      <div className="hidden text-right font-mono tabular text-sm font-semibold md:block">
-        {hasPrice ? formatCurrency(price!) : <span className="text-muted-foreground">—</span>}
-      </div>
-
-      {/* Day one */}
-      <div className="hidden text-right font-mono tabular text-sm font-medium text-muted-foreground md:block">
-        {formatCurrency(day1)}
-      </div>
-
-      {/* Today */}
-      <div className="hidden text-right font-mono tabular text-sm font-semibold md:block">
-        {hasPrice ? formatCurrency(today) : "—"}
-      </div>
-
-      {/* Δ / day */}
-      <div
-        className="hidden text-right font-mono tabular text-sm font-semibold md:block"
-        style={{ color: dayColor }}
-      >
-        {hasPrice
-          ? `${dayDelta >= 0 ? "+" : ""}${formatCurrency(dayDelta)}`
-          : "—"}
-      </div>
-
-      {/* Total return + hover actions */}
-      <div className="flex items-center justify-end gap-2">
-        <div className="text-right">
-          {hasPrice ? (
-            <>
-              <p className="font-mono tabular text-base font-bold" style={{ color: returnColor }}>
-                {isPositive ? "+" : ""}
-                {formatCurrency(diff)}
+    <>
+      {/* ── MOBILE card (hidden on md+) ─────────────────────────────── */}
+      <div className="flex flex-col gap-2.5 rounded-2xl bg-secondary/40 p-3.5 transition-colors hover:bg-secondary md:hidden">
+        {/* Header row: coin + menu */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <CoinMark
+              symbol={holding.coinSymbol}
+              image={holding.coinImage}
+              size={36}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold tracking-tight">
+                {holding.coinName}
               </p>
+              <p className="mt-0.5 truncate font-mono text-[0.68rem] font-medium text-muted-foreground">
+                {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-xl"
+                    id={`row-menu-mob-${holding.id}`}
+                  >
+                    <Menu className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  id={`edit-holding-mob-${holding.id}`}
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  id={`delete-holding-mob-${holding.id}`}
+                  variant="destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Stats 2×2 grid */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border/50 pt-2.5">
+          <MobileStat label="Price" value={hasPrice ? formatCurrency(price!) : "—"} />
+          <MobileStat label="Day one" value={formatCurrency(day1)} muted />
+          <MobileStat label="Today" value={hasPrice ? formatCurrency(today) : "—"} />
+          <MobileStat
+            label="Δ / day"
+            value={hasPrice ? `${dayDelta >= 0 ? "+" : ""}${formatCurrency(dayDelta)}` : "—"}
+            color={hasPrice ? dayColor : undefined}
+          />
+        </div>
+
+        {/* Total return — full width */}
+        <div
+          className="flex items-center justify-between rounded-xl px-3 py-2"
+          style={{ background: returnBg }}
+        >
+          <span className="text-[0.68rem] font-semibold uppercase tracking-wider" style={{ color: returnColor }}>
+            Total return
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono tabular text-sm font-bold" style={{ color: returnColor }}>
+              {hasPrice ? `${isPositive ? "+" : ""}${formatCurrency(diff)}` : "—"}
+            </span>
+            {hasPrice && (
               <span
-                className="mt-0.5 inline-block rounded-full px-2.5 py-0.5 font-mono tabular text-[0.68rem] font-semibold"
-                style={{ background: returnBg, color: returnColor }}
+                className="rounded-full px-2 py-0.5 font-mono tabular text-[0.65rem] font-semibold"
+                style={{ background: "rgba(0,0,0,0.12)", color: returnColor }}
               >
                 {isPositive ? "▲" : "▼"} {(pct * 100).toFixed(2)}%
               </span>
-            </>
-          ) : (
-            <p className="font-mono tabular text-sm text-muted-foreground">—</p>
-          )}
-        </div>
-
-        <div className="ml-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="rounded-xl"
-                  id={`row-menu-${holding.id}`}
-                >
-                  <Menu className="h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                id={`edit-holding-${holding.id}`}
-                onClick={() => setEditOpen(true)}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                id={`delete-holding-${holding.id}`}
-                variant="destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <AddHoldingDialog
-            editHolding={holding}
-            onSubmit={(data) => holding.id && onUpdate(holding.id, data)}
-            open={editOpen}
-            onOpenChange={setEditOpen}
-          />
-          <DeleteHoldingDialog
-            holding={holding}
-            price={price}
-            onConfirm={() => holding.id && onDelete(holding.id)}
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-          />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* ── DESKTOP row (hidden below md) ───────────────────────────── */}
+      <div className="group hidden md:grid md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] items-center gap-5 rounded-2xl px-4 py-3 transition-colors hover:bg-secondary">
+        {/* Asset */}
+        <div className="flex items-center gap-4">
+          <CoinMark
+            symbol={holding.coinSymbol}
+            image={holding.coinImage}
+            size={40}
+          />
+          <div className="min-w-0">
+            <p className="truncate text-[0.95rem] font-semibold tracking-tight">
+              {holding.coinName}
+            </p>
+            <p className="mt-0.5 truncate font-mono tabular text-[0.7rem] font-medium text-muted-foreground">
+              {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
+            </p>
+          </div>
+        </div>
+
+        {/* Price now */}
+        <div className="text-right font-mono tabular text-sm font-semibold">
+          {hasPrice ? formatCurrency(price!) : <span className="text-muted-foreground">—</span>}
+        </div>
+
+        {/* Day one */}
+        <div className="text-right font-mono tabular text-sm font-medium text-muted-foreground">
+          {formatCurrency(day1)}
+        </div>
+
+        {/* Today */}
+        <div className="text-right font-mono tabular text-sm font-semibold">
+          {hasPrice ? formatCurrency(today) : "—"}
+        </div>
+
+        {/* Δ / day */}
+        <div
+          className="text-right font-mono tabular text-sm font-semibold"
+          style={{ color: dayColor }}
+        >
+          {hasPrice ? `${dayDelta >= 0 ? "+" : ""}${formatCurrency(dayDelta)}` : "—"}
+        </div>
+
+        {/* Total return + actions */}
+        <div className="flex items-center justify-end gap-2">
+          <div className="text-right">
+            {hasPrice ? (
+              <>
+                <p className="font-mono tabular text-base font-bold" style={{ color: returnColor }}>
+                  {isPositive ? "+" : ""}
+                  {formatCurrency(diff)}
+                </p>
+                <span
+                  className="mt-0.5 inline-block rounded-full px-2.5 py-0.5 font-mono tabular text-[0.68rem] font-semibold"
+                  style={{ background: returnBg, color: returnColor }}
+                >
+                  {isPositive ? "▲" : "▼"} {(pct * 100).toFixed(2)}%
+                </span>
+              </>
+            ) : (
+              <p className="font-mono tabular text-sm text-muted-foreground">—</p>
+            )}
+          </div>
+
+          <div className="ml-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-xl"
+                    id={`row-menu-${holding.id}`}
+                  >
+                    <Menu className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  id={`edit-holding-${holding.id}`}
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  id={`delete-holding-${holding.id}`}
+                  variant="destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+
+      {/* Shared dialogs (rendered once, outside both layouts) */}
+      <AddHoldingDialog
+        editHolding={holding}
+        onSubmit={(data) => holding.id && onUpdate(holding.id, data)}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
+      <DeleteHoldingDialog
+        holding={holding}
+        price={price}
+        onConfirm={() => holding.id && onDelete(holding.id)}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+      />
+    </>
   );
 }
 
@@ -292,4 +384,31 @@ function formatShort(n: number): string {
   if (n >= 10_000) return (n / 1_000).toFixed(1) + "k";
   if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
   return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+/** A small label + value pair used inside the mobile card's 2×2 stats grid. */
+function MobileStat({
+  label,
+  value,
+  muted,
+  color,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  color?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className="font-mono tabular text-xs font-semibold"
+        style={color ? { color } : muted ? { color: "var(--muted-foreground)" } : undefined}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }

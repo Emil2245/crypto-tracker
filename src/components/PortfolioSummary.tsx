@@ -66,7 +66,7 @@ export function PortfolioSummary({
   const cents = (totalCurrent - dollars).toFixed(2).slice(2);
 
   return (
-    <Card className="soft-card gap-6 p-8">
+    <Card className="soft-card gap-5 p-5 sm:gap-6 sm:p-8">
       <CardContent className="flex flex-col gap-6 p-0">
         <div className="flex items-start justify-between gap-6">
           <div>
@@ -75,13 +75,13 @@ export function PortfolioSummary({
             </p>
             <div className="mt-2 flex items-baseline gap-1">
               {loading && !totalCurrent ? (
-                <div className="h-16 w-64 animate-pulse rounded-2xl bg-muted" />
+                <div className="h-10 w-48 animate-pulse rounded-2xl bg-muted sm:h-16 sm:w-64" />
               ) : (
                 <>
-                  <span className="tabular text-6xl font-bold tracking-[-0.035em] leading-none">
+                  <span className="tabular text-4xl font-bold tracking-[-0.035em] leading-none sm:text-6xl">
                     {formatDollars(dollars)}
                   </span>
-                  <span className="tabular text-2xl font-semibold tracking-[-0.02em] text-muted-foreground">
+                  <span className="tabular text-xl font-semibold tracking-[-0.02em] text-muted-foreground sm:text-2xl">
                     .{cents}
                   </span>
                 </>
@@ -119,17 +119,19 @@ export function PortfolioSummary({
             </div>
           </div>
 
-          <AddHoldingDialog onSubmit={onAdd} />
+          <div className="hidden sm:flex">
+            <AddHoldingDialog onSubmit={onAdd} />
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex gap-1 rounded-full bg-secondary p-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex w-full gap-1 rounded-full bg-secondary p-1 sm:w-auto sm:inline-flex">
             {RANGES.map((r, i) => (
               <button
                 key={r.label}
                 onClick={() => setRangeIdx(i)}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 font-sans text-xs font-medium transition-colors",
+                  "flex-1 rounded-full px-3.5 py-1.5 font-sans text-xs font-medium transition-colors sm:flex-none",
                   i === rangeIdx
                     ? "bg-foreground text-background font-semibold"
                     : "text-muted-foreground hover:text-foreground"
@@ -155,12 +157,15 @@ export function PortfolioSummary({
           costBasis={totalInvested}
         />
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* All 5 KPI cards in one responsive grid:
+             mobile  : 2 cols — primary pair full width, secondary trio 2+1
+             sm+     : 2 cols for primary, 3 cols for secondary (same as before) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <StatCard
             size="primary"
             label="Day one"
             value={formatCurrency(totalInvested)}
-            hint={`across ${holdings.length} ${holdings.length === 1 ? "asset" : "assets"}`}
+            hint={`${holdings.length} ${holdings.length === 1 ? "asset" : "assets"}`}
           />
           <StatCard
             size="primary"
@@ -169,10 +174,9 @@ export function PortfolioSummary({
             hint="current value"
           />
         </div>
-
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatCard
-            label="Total change"
+            label="Total Δ"
             value={`${isPositive ? "+" : ""}${formatCurrency(totalDiff)}`}
             hint={`${isPositive ? "▲" : "▼"} ${(pctChange * 100).toFixed(2)}%`}
             tone={isPositive ? "gain" : "loss"}
@@ -192,16 +196,17 @@ export function PortfolioSummary({
             }
             hint={
               todayDelta === null
-                ? "awaiting history"
+                ? "awaiting"
                 : `${todayDelta >= 0 ? "▲" : "▼"} ${(
-                    (todayDelta /
-                      Math.max(1, history.data[history.data.length - 2]?.v ?? totalCurrent)) *
-                    100
-                  ).toFixed(2)}%`
+                  (todayDelta /
+                    Math.max(1, history.data[history.data.length - 2]?.v ?? totalCurrent)) *
+                  100
+                ).toFixed(2)}%`
             }
             tone={
               todayDelta === null ? "neutral" : todayDelta >= 0 ? "gain" : "loss"
             }
+            spanFull
           />
         </div>
       </CardContent>
@@ -215,12 +220,14 @@ function StatCard({
   hint,
   tone = "neutral",
   size = "secondary",
+  spanFull = false,
 }: {
   label: string;
   value: string;
   hint: string;
   tone?: "neutral" | "gain" | "loss";
   size?: "primary" | "secondary";
+  spanFull?: boolean;
 }) {
   const color =
     tone === "gain"
@@ -232,32 +239,38 @@ function StatCard({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-secondary/60",
-        isPrimary ? "px-5 py-4" : "px-4 py-3.5"
+        "flex flex-col justify-between rounded-2xl bg-secondary/60 px-3.5 py-3 sm:px-5 sm:py-4",
+        spanFull && "col-span-2 sm:col-span-1"
       )}
     >
+      {/* Label + hint on one line to save vertical space on mobile */}
+      <div className="flex items-center justify-between gap-1">
+        <p
+          className={cn(
+            "font-semibold uppercase tracking-wider text-muted-foreground",
+            isPrimary ? "text-[0.65rem] sm:text-xs" : "text-[0.6rem] sm:text-[0.65rem]"
+          )}
+        >
+          {label}
+        </p>
+        <span
+          className="shrink-0 font-mono text-[0.6rem] font-medium"
+          style={{ color: color ?? "var(--muted-foreground)" }}
+        >
+          {hint}
+        </span>
+      </div>
+      {/* Value — scales up on larger screens */}
       <p
         className={cn(
-          "font-medium text-muted-foreground",
-          isPrimary ? "text-sm" : "text-xs"
-        )}
-      >
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-1.5 text-right font-mono tabular font-bold tracking-[-0.015em]",
-          isPrimary ? "text-3xl" : "text-2xl"
+          "mt-1.5 text-right font-mono tabular font-bold tracking-[-0.015em] leading-none",
+          isPrimary
+            ? "text-xl sm:text-3xl"
+            : "text-base sm:text-2xl"
         )}
         style={{ color }}
       >
         {value}
-      </p>
-      <p
-        className="mt-1 text-right font-mono tabular text-[0.7rem] font-medium"
-        style={{ color: color ?? "var(--muted-foreground)" }}
-      >
-        {hint}
       </p>
     </div>
   );

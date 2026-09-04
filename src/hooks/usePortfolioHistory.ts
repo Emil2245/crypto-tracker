@@ -53,13 +53,16 @@ function buildTimeline(
     acc[h.coinId] = (acc[h.coinId] ?? 0) + h.amount;
     return acc;
   }, {});
-  const purchasePriceByCoin = holdings.reduce<Record<string, number>>(
-    (acc, h) => {
-      acc[h.coinId] = h.purchasePrice;
-      return acc;
-    },
-    {}
-  );
+  // Weighted-average cost basis per coin across all transactions.
+  const costBasisByCoin = holdings.reduce<Record<string, number>>((acc, h) => {
+    acc[h.coinId] = (acc[h.coinId] ?? 0) + h.amount * h.purchasePrice;
+    return acc;
+  }, {});
+  const avgPriceByCoin: Record<string, number> = {};
+  for (const id of Object.keys(amountByCoin)) {
+    const totalAmt = amountByCoin[id] ?? 0;
+    avgPriceByCoin[id] = totalAmt > 0 ? (costBasisByCoin[id] ?? 0) / totalAmt : 0;
+  }
 
   // Pick the densest available series as the timestamp grid.
   const grid = charts
@@ -81,7 +84,7 @@ function buildTimeline(
         // we have (live price, else purchase price). Prevents the whole line
         // collapsing to $0 because one coin's chart didn't come back.
         const fallback =
-          currentPrices[id] ?? purchasePriceByCoin[id] ?? 0;
+          currentPrices[id] ?? avgPriceByCoin[id] ?? 0;
         total += fallback * amountByCoin[id];
       }
     }

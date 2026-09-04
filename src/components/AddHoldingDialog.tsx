@@ -30,6 +30,8 @@ interface AddHoldingDialogProps {
     holding: Omit<Holding, "id" | "createdAt" | "updatedAt">
   ) => void;
   editHolding?: Holding;
+  /** When set, the coin is pre-selected and locked — only date/qty/price are editable. */
+  lockedCoin?: { id: string; name: string; symbol: string; image?: string };
   trigger?: React.ReactElement;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -54,6 +56,7 @@ function dateToIso(date: Date): string {
 export function AddHoldingDialog({
   onSubmit,
   editHolding,
+  lockedCoin,
   trigger,
   open: openProp,
   onOpenChange,
@@ -61,16 +64,21 @@ export function AddHoldingDialog({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
-  const [selectedCoin, setSelectedCoin] = useState<CoinSearchResult | null>(
-    editHolding
-      ? {
-          id: editHolding.coinId,
-          name: editHolding.coinName,
-          symbol: editHolding.coinSymbol,
-          thumb: editHolding.coinImage || "",
-        }
-      : null
-  );
+
+  // Resolve the initial coin — from editHolding, lockedCoin, or nothing.
+  const initialCoin: CoinSearchResult | null = editHolding
+    ? {
+      id: editHolding.coinId,
+      name: editHolding.coinName,
+      symbol: editHolding.coinSymbol,
+      thumb: editHolding.coinImage || "",
+    }
+    : lockedCoin
+      ? { id: lockedCoin.id, name: lockedCoin.name, symbol: lockedCoin.symbol, thumb: lockedCoin.image || "" }
+      : null;
+
+  const [selectedCoin, setSelectedCoin] = useState<CoinSearchResult | null>(initialCoin);
+
   const [amount, setAmount] = useState(
     editHolding ? String(editHolding.amount) : ""
   );
@@ -200,12 +208,17 @@ export function AddHoldingDialog({
             {isEditing ? (
               <>
                 <Pencil className="h-5 w-5 text-primary" />
-                Edit holding
+                Edit transaction
+              </>
+            ) : lockedCoin ? (
+              <>
+                <Plus className="h-5 w-5 text-primary" />
+                New transaction
               </>
             ) : (
               <>
                 <Plus className="h-5 w-5 text-primary" />
-                New holding
+                New asset
               </>
             )}
           </DialogTitle>
@@ -232,14 +245,28 @@ export function AddHoldingDialog({
               <span className="mr-2 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-[0.6rem] font-bold text-primary">2</span>
               Asset
             </Label>
-            <CoinSearch
-              onSelect={setSelectedCoin}
-              value={
-                isEditing
-                  ? `${editHolding.coinName} (${editHolding.coinSymbol.toUpperCase()})`
-                  : undefined
-              }
-            />
+            {lockedCoin ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-2.5 text-sm">
+                <img
+                  src={lockedCoin.image}
+                  alt=""
+                  className="h-6 w-6 rounded-full bg-background"
+                />
+                <span className="font-semibold">{lockedCoin.name}</span>
+                <span className="font-mono text-xs uppercase text-muted-foreground">
+                  {lockedCoin.symbol}
+                </span>
+              </div>
+            ) : (
+              <CoinSearch
+                onSelect={setSelectedCoin}
+                value={
+                  isEditing
+                    ? `${editHolding.coinName} (${editHolding.coinSymbol.toUpperCase()})`
+                    : undefined
+                }
+              />
+            )}
             {selectedCoin && (
               <div className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm">
                 <img
@@ -306,11 +333,11 @@ export function AddHoldingDialog({
                       className={cn(
                         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
                         status === "ok" &&
-                          "bg-[color:var(--gain-soft)] text-[color:var(--gain)]",
+                        "bg-[color:var(--gain-soft)] text-[color:var(--gain)]",
                         status === "empty" &&
-                          "bg-secondary text-muted-foreground",
+                        "bg-secondary text-muted-foreground",
                         status === "pending" &&
-                          "bg-secondary text-muted-foreground"
+                        "bg-secondary text-muted-foreground"
                       )}
                     >
                       {status === "pending" && priceLoading ? (

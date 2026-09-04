@@ -37,7 +37,7 @@ function App() {
 
   return (
     <div className="min-h-screen text-foreground">
-      <div className="mx-auto max-w-[1440px] px-6 pt-6 pb-12 sm:px-8">
+      <div className="mx-auto max-w-[1440px] px-4 pt-4 pb-12 sm:px-8 sm:pt-6">
         {/* Top nav */}
         <nav className="flex items-center justify-between pb-6">
           <div className="flex items-center gap-3">
@@ -82,7 +82,7 @@ function App() {
         ) : (
           <div
             className={cn(
-              "grid grid-cols-1 gap-6 transition-[grid-template-columns] duration-200",
+              "flex flex-col gap-4 lg:grid lg:gap-6 transition-[grid-template-columns] duration-200",
               collapsed
                 ? "lg:grid-cols-[76px_minmax(0,1fr)]"
                 : "lg:grid-cols-[320px_minmax(0,1fr)]"
@@ -98,7 +98,7 @@ function App() {
               onReorder={reorderHoldings}
               onAdd={addHolding}
             />
-            <section className="flex min-w-0 flex-col gap-6">
+            <section className="flex min-w-0 flex-col gap-4 lg:gap-6">
               <PortfolioSummary
                 holdings={holdings}
                 prices={prices}
