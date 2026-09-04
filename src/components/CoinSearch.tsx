@@ -20,6 +20,7 @@ export function CoinSearch({ onSelect, value, placeholder }: CoinSearchProps) {
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -28,7 +29,9 @@ export function CoinSearch({ onSelect, value, placeholder }: CoinSearchProps) {
       return;
     }
     setLoading(true);
+    const myRequest = ++requestIdRef.current;
     const coins = await searchCoins(q);
+    if (myRequest !== requestIdRef.current) return; // stale — discard
     setResults(coins);
     setLoading(false);
     setIsOpen(coins.length > 0);
