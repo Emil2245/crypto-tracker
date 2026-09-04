@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useControlledOpen } from "@/hooks/useControlledOpen";
 import { AlertTriangle, Check } from "lucide-react";
 import {
   Dialog,
@@ -37,9 +38,7 @@ export function DeleteHoldingDialog({
   open: openProp,
   onOpenChange,
 }: DeleteHoldingDialogProps) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = openProp ?? internalOpen;
-  const setOpen = onOpenChange ?? setInternalOpen;
+  const [open, setOpen] = useControlledOpen(openProp, onOpenChange);
   const [ack1, setAck1] = useState(false);
   const [ack2, setAck2] = useState(false);
   const [typedSymbol, setTypedSymbol] = useState("");

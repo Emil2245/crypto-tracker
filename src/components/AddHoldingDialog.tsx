@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useControlledOpen } from "@/hooks/useControlledOpen";
 import {
   Dialog,
   DialogContent,
@@ -10,26 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Progress } from "@/components/ui/progress";
 import { CoinSearch } from "@/components/CoinSearch";
-import { getPriceOnDate, PRICE_PROVIDERS, type PriceProvider } from "@/lib/coingecko";
+import { getPriceOnDate, PRICE_PROVIDERS } from "@/lib/coingecko";
 import { formatCurrency } from "@/lib/calculations";
-import type { CoinSearchResult, Holding } from "@/types";
-import { Check, Loader2, Pencil, Plus, Sparkles, X } from "lucide-react";
+import type { CoinSearchResult, Transaction, TransactionInput } from "@/types";
+import { Loader2, Pencil, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type SourceStatus = "pending" | "ok" | "empty";
-
-function initialSourceStatus(): Record<PriceProvider, SourceStatus> {
-  return Object.fromEntries(
-    PRICE_PROVIDERS.map((p) => [p, "pending"])
-  ) as Record<PriceProvider, SourceStatus>;
-}
+const PROVIDER_TOTAL = PRICE_PROVIDERS.length;
 
 interface AddHoldingDialogProps {
-  onSubmit: (
-    holding: Omit<Holding, "id" | "createdAt" | "updatedAt">
-  ) => void;
-  editHolding?: Holding;
+  onSubmit: (transaction: TransactionInput) => void;
+  editTransaction?: Transaction;
   /** When set, the coin is pre-selected and locked — only date/qty/price are editable. */
   lockedCoin?: { id: string; name: string; symbol: string; image?: string };
   trigger?: React.ReactElement;
@@ -55,23 +49,21 @@ function dateToIso(date: Date): string {
 
 export function AddHoldingDialog({
   onSubmit,
-  editHolding,
+  editTransaction,
   lockedCoin,
   trigger,
   open: openProp,
   onOpenChange,
 }: AddHoldingDialogProps) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = openProp ?? internalOpen;
-  const setOpen = onOpenChange ?? setInternalOpen;
+  const [open, setOpen] = useControlledOpen(openProp, onOpenChange);
 
-  // Resolve the initial coin — from editHolding, lockedCoin, or nothing.
-  const initialCoin: CoinSearchResult | null = editHolding
+  // Resolve the initial coin — from editTransaction, lockedCoin, or nothing.
+  const initialCoin: CoinSearchResult | null = editTransaction
     ? {
-      id: editHolding.coinId,
-      name: editHolding.coinName,
-      symbol: editHolding.coinSymbol,
-      thumb: editHolding.coinImage || "",
+      id: editTransaction.coinId,
+      name: editTransaction.coinName,
+      symbol: editTransaction.coinSymbol,
+      thumb: editTransaction.coinImage || "",
     }
     : lockedCoin
       ? { id: lockedCoin.id, name: lockedCoin.name, symbol: lockedCoin.symbol, thumb: lockedCoin.image || "" }
@@ -80,28 +72,28 @@ export function AddHoldingDialog({
   const [selectedCoin, setSelectedCoin] = useState<CoinSearchResult | null>(initialCoin);
 
   const [amount, setAmount] = useState(
-    editHolding ? String(editHolding.amount) : ""
+    editTransaction ? String(editTransaction.amount) : ""
   );
   const [purchasePrice, setPurchasePrice] = useState(
-    editHolding ? String(editHolding.purchasePrice) : ""
+    editTransaction ? String(editTransaction.purchasePrice) : ""
   );
   const [purchaseDate, setPurchaseDate] = useState(
-    editHolding?.purchaseDate || todayIso()
+    editTransaction?.purchaseDate || todayIso()
   );
-  const [autoPrice, setAutoPrice] = useState(!editHolding);
+  const [autoPrice, setAutoPrice] = useState(true);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceAttempt, setPriceAttempt] = useState(0);
   const [priceSource, setPriceSource] = useState<string | null>(null);
-  const [sourceStatus, setSourceStatus] = useState<Record<PriceProvider, SourceStatus>>(
-    initialSourceStatus
-  );
+  const [settled, setSettled] = useState(0);
+  const progressPct = Math.round((settled / PROVIDER_TOTAL) * 100);
 
-  const isEditing = !!editHolding;
+  const isEditing = !!editTransaction;
 
   // Auto-fetch the market price for the selected coin + date. Every failed
-  // pass through all three sources triggers a backoff retry (3s, then 4.5s,
+  // pass through all the providers triggers a backoff retry (3s, then 4.5s,
   // 6.75s… capped at 30s) — the effect doesn't give up until it gets a price,
-  // the user flips the toggle off, or the dialog closes.
+  // the user flips the toggle off, or the dialog closes. `settled` counts how
+  // many providers have responded on the current pass, driving the progress bar.
   useEffect(() => {
     if (!autoPrice || !selectedCoin || !purchaseDate) return;
     let cancelled = false;
@@ -111,17 +103,14 @@ export function AddHoldingDialog({
     async function tryFetch() {
       if (cancelled) return;
       setPriceLoading(true);
-      setSourceStatus(initialSourceStatus());
+      setSettled(0);
       const result = await getPriceOnDate(
         selectedCoin!.id,
         selectedCoin!.symbol,
         purchaseDate,
-        (provider, price) => {
+        () => {
           if (cancelled) return;
-          setSourceStatus((prev) => ({
-            ...prev,
-            [provider]: price !== null ? "ok" : "empty",
-          }));
+          setSettled((n) => n + 1);
         }
       );
       if (cancelled) return;
@@ -159,7 +148,6 @@ export function AddHoldingDialog({
       amount: parseFloat(amount),
       purchasePrice: parseFloat(purchasePrice),
       purchaseDate,
-      ...(editHolding?.order !== undefined ? { order: editHolding.order } : {}),
     });
 
     if (!isEditing) {
@@ -172,7 +160,7 @@ export function AddHoldingDialog({
     setOpen(false);
   }
 
-  const isValid =
+  const isValid = !(autoPrice && priceLoading) &&
     selectedCoin &&
     amount &&
     parseFloat(amount) > 0 &&
@@ -182,7 +170,7 @@ export function AddHoldingDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {(trigger || !isEditing) && (
+      {(trigger || (openProp === undefined && !isEditing)) && (
         <DialogTrigger
           render={
             trigger || (
@@ -262,7 +250,7 @@ export function AddHoldingDialog({
                 onSelect={setSelectedCoin}
                 value={
                   isEditing
-                    ? `${editHolding.coinName} (${editHolding.coinSymbol.toUpperCase()})`
+                    ? `${editTransaction.coinName} (${editTransaction.coinSymbol.toUpperCase()})`
                     : undefined
                 }
               />
@@ -323,34 +311,9 @@ export function AddHoldingDialog({
               <Switch checked={autoPrice} onCheckedChange={setAutoPrice} />
             </div>
 
-            {autoPrice && selectedCoin && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {PRICE_PROVIDERS.map((provider) => {
-                  const status = sourceStatus[provider];
-                  return (
-                    <span
-                      key={provider}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium",
-                        status === "ok" &&
-                        "bg-[color:var(--gain-soft)] text-[color:var(--gain)]",
-                        status === "empty" &&
-                        "bg-secondary text-muted-foreground",
-                        status === "pending" &&
-                        "bg-secondary text-muted-foreground"
-                      )}
-                    >
-                      {status === "pending" && priceLoading ? (
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                      ) : status === "ok" ? (
-                        <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                      ) : (
-                        <X className="h-2.5 w-2.5 opacity-50" />
-                      )}
-                      {provider}
-                    </span>
-                  );
-                })}
+            {autoPrice && selectedCoin && priceLoading && (
+              <div className="mt-3">
+                <Progress value={progressPct} className="h-2" />
               </div>
             )}
 
@@ -391,7 +354,16 @@ export function AddHoldingDialog({
             disabled={!isValid}
             className="h-11 w-full rounded-2xl text-sm font-semibold"
           >
-            {isEditing ? "Save changes" : "Add to ledger"}
+            {autoPrice && priceLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Updating price…
+              </>
+            ) : isEditing ? (
+              "Save changes"
+            ) : (
+              "Add to ledger"
+            )}
           </Button>
         </form>
       </DialogContent>
