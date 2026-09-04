@@ -5,10 +5,23 @@ A local-first crypto portfolio tracker. Add your holdings, watch live prices and
 ## Screenshots
 
 ### Light mode
-![Ledger light mode](src/res/UI.png)
+![Ledger light mode](screenshots/ui-light.png)
 
 ### Dark mode
-![Ledger dark mode](src/res/UI-black.png)
+![Ledger dark mode](screenshots/ui-dark.png)
+
+[Mobile + transaction dialog →](docs/screenshots.md)
+
+Screenshots are regenerated automatically on every push to `main` via `.github/workflows/screenshots.yml`.
+
+## Docs
+
+| | |
+|---|---|
+| [Architecture](docs/architecture.md) | Component tree, data flow, layout |
+| [Data model](docs/data-model.md) | IndexedDB schema, migrations, derived types |
+| [Price fetching](docs/price-fetching.md) | Live + historical price cascade, rate limiting |
+| [Screenshots](docs/screenshots.md) | All four views, how to regenerate |
 
 ## Features
 

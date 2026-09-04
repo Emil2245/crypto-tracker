@@ -13,6 +13,7 @@ import { DeleteHoldingDialog } from "@/components/DeleteHoldingDialog";
 import { TransactionPickerDialog } from "@/components/TransactionPickerDialog";
 import { CoinDetailDialog } from "@/components/CoinDetailDialog";
 import { CoinMark } from "@/components/CoinMark";
+import { ReturnBadge } from "@/components/ReturnBadge";
 import { SortHeader, type SortDir } from "@/components/SortHeader";
 import {
   formatCurrency,
@@ -22,21 +23,11 @@ import {
   valueDifference,
   daysSincePurchase,
   averageDailyChange,
+  pctChange,
 } from "@/lib/calculations";
 import { cn } from "@/lib/utils";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import type { Holding, Transaction, TransactionInput } from "@/types";
-
-interface HoldingsLedgerProps {
-  holdings: Holding[];
-  prices: Record<string, number>;
-  getTransactions: (coinId: string) => Promise<Transaction[]>;
-  onAdd: (transaction: TransactionInput) => void;
-  onUpdateTransaction: (
-    id: number,
-    updates: Partial<Omit<Transaction, "id" | "createdAt">>
-  ) => void;
-  onDelete: (coinId: string) => void;
-}
 
 type FilterKey = "all" | "gainers" | "losers";
 
@@ -57,14 +48,15 @@ function coinSubtext(holding: Holding, days: number): string {
     : base;
 }
 
-export function HoldingsLedger({
-  holdings,
-  prices,
-  getTransactions,
-  onAdd,
-  onUpdateTransaction,
-  onDelete,
-}: HoldingsLedgerProps) {
+export function HoldingsLedger() {
+  const {
+    holdings,
+    prices,
+    getTransactions,
+    onAdd,
+    onUpdateTransaction,
+    onDelete,
+  } = usePortfolio();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showAll, setShowAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("asset");
@@ -246,7 +238,7 @@ const PositionRow = React.memo(function PositionRow({
   const today = hasPrice ? currentValue(holding, price) : day1;
   const diff = hasPrice ? valueDifference(holding, price) : 0;
   const dayDelta = hasPrice ? averageDailyChange(holding, price) : 0;
-  const pct = day1 > 0 ? diff / day1 : 0;
+  const pct = pctChange(today, day1);
   const days = daysSincePurchase(holding);
   const isPositive = diff >= 0;
   const returnColor = isPositive ? "var(--gain)" : "var(--loss)";
@@ -384,19 +376,11 @@ const PositionRow = React.memo(function PositionRow({
           <span className="text-[0.68rem] font-semibold uppercase tracking-wider" style={{ color: returnColor }}>
             Total return
           </span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono tabular text-sm font-bold" style={{ color: returnColor }}>
-              {hasPrice ? `${isPositive ? "+" : ""}${formatCurrency(diff)}` : "—"}
-            </span>
-            {hasPrice && (
-              <span
-                className="rounded-full px-2 py-0.5 font-mono tabular text-[0.65rem] font-semibold"
-                style={{ background: "rgba(0,0,0,0.12)", color: returnColor }}
-              >
-                {isPositive ? "▲" : "▼"} {(pct * 100).toFixed(2)}%
-              </span>
-            )}
-          </div>
+          {hasPrice ? (
+            <ReturnBadge diff={diff} pct={pct} size="compact" />
+          ) : (
+            <span className="font-mono tabular text-sm font-bold">—</span>
+          )}
         </div>
       </div>
 
@@ -455,24 +439,11 @@ const PositionRow = React.memo(function PositionRow({
 
         {/* Total return + actions */}
         <div className="flex items-center justify-end gap-2">
-          <div className="text-right">
-            {hasPrice ? (
-              <>
-                <p className="font-mono tabular text-base font-bold" style={{ color: returnColor }}>
-                  {isPositive ? "+" : ""}
-                  {formatCurrency(diff)}
-                </p>
-                <span
-                  className="mt-0.5 inline-block rounded-full px-2.5 py-0.5 font-mono tabular text-[0.68rem] font-semibold"
-                  style={{ background: returnBg, color: returnColor }}
-                >
-                  {isPositive ? "▲" : "▼"} {(pct * 100).toFixed(2)}%
-                </span>
-              </>
-            ) : (
-              <p className="font-mono tabular text-sm text-muted-foreground">—</p>
-            )}
-          </div>
+          {hasPrice ? (
+            <ReturnBadge diff={diff} pct={pct} size="compact" />
+          ) : (
+            <p className="font-mono tabular text-sm text-muted-foreground">—</p>
+          )}
 
           <div className="ml-2">
             <DropdownMenu>

@@ -170,6 +170,14 @@
     .font-mono { font-family: var(--font-mono); }
     .tabular { font-variant-numeric: tabular-nums; }
 
+    .animate-progress-indeterminate {
+        animation: progress-indeterminate 1.4s ease-in-out infinite;
+    }
+    @keyframes progress-indeterminate {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(400%); }
+    }
+
     .soft-card {
         background: var(--card);
         border: 1px solid var(--border);

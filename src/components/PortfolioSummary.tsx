@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { ArrowUp, ArrowDown } from "lucide-react";
+import { ReturnBadge } from "@/components/ReturnBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
 import { PortfolioChart } from "@/components/PortfolioChart";
 import { usePortfolioHistory } from "@/hooks/usePortfolioHistory";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import { cn } from "@/lib/utils";
 import {
   formatCurrency,
@@ -13,14 +14,6 @@ import {
   averageDailyChange,
   pctChange,
 } from "@/lib/calculations";
-import type { Holding, TransactionInput } from "@/types";
-
-interface PortfolioSummaryProps {
-  holdings: Holding[];
-  prices: Record<string, number>;
-  loading: boolean;
-  onAdd: (transaction: TransactionInput) => void;
-}
 
 // CoinGecko's free tier caps historical data at 365 days — 730 returns 401.
 const RANGES = [
@@ -31,12 +24,8 @@ const RANGES = [
   { label: "1Y", days: 365 },
 ] as const;
 
-export function PortfolioSummary({
-  holdings,
-  prices,
-  loading,
-  onAdd,
-}: PortfolioSummaryProps) {
+export function PortfolioSummary() {
+  const { holdings, prices, loading, onAdd } = usePortfolio();
   const [rangeIdx, setRangeIdx] = useState(2);
   const days = RANGES[rangeIdx].days;
   const history = usePortfolioHistory(holdings, days, prices);
@@ -113,35 +102,8 @@ export function PortfolioSummary({
                 </>
               )}
             </div>
-            <div
-              className="mt-4 inline-flex items-center gap-2 rounded-full py-1.5 pr-3.5 pl-1.5"
-              style={{
-                background: isPositive ? "var(--gain-soft)" : "var(--loss-soft)",
-                color: isPositive ? "var(--gain)" : "var(--loss)",
-              }}
-            >
-              <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-white"
-                style={{ background: isPositive ? "var(--gain)" : "var(--loss)" }}
-              >
-                {isPositive ? (
-                  <ArrowUp className="h-3 w-3" strokeWidth={3} />
-                ) : (
-                  <ArrowDown className="h-3 w-3" strokeWidth={3} />
-                )}
-              </span>
-              <span className="font-mono tabular text-sm font-semibold">
-                {isPositive ? "+" : ""}
-                {formatCurrency(totalDiff)}
-              </span>
-              <span className="opacity-40">·</span>
-              <span className="font-mono tabular text-sm font-semibold">
-                {isPositive ? "+" : ""}
-                {(totalPctChange * 100).toFixed(2)}%
-              </span>
-              <span className="text-xs font-medium opacity-70">
-                since acquisition
-              </span>
+            <div className="mt-4">
+              <ReturnBadge diff={totalDiff} pct={totalPctChange} size="large" label="since acquisition" />
             </div>
           </div>
 

@@ -84,7 +84,7 @@ export async function getPrices(
 
 /**
  * Fetches USD prices for the given coins, cascading through CoinGecko simple
- * price → Binance / KuCoin spot price for anything CoinGecko didn't return.
+ * price → Binance / Gate.io spot price for anything CoinGecko didn't return.
  * `symbolsByCoin` maps a coinId to its ticker symbol (e.g. "bitcoin" → "BTC")
  * so the exchange fallbacks can address the same coin.
  *
@@ -100,7 +100,7 @@ export async function getPricesWithFallback(
   const missing = coinIds.filter((id) => !(id in primary));
   if (missing.length === 0) return primary;
 
-  // For each missing coin, try Binance and KuCoin in parallel and take
+  // For each missing coin, try Binance and Gate.io in parallel and take
   // whichever responds first with a valid price.
   const filled = { ...primary };
 
@@ -109,12 +109,12 @@ export async function getPricesWithFallback(
       const sym = symbolsByCoin[id]?.toUpperCase();
       if (!sym) return;
 
-      const [binancePrice, kucoinPrice] = await Promise.all([
+      const [binancePrice, gatePrice] = await Promise.all([
         livePriceFromBinance(sym),
-        livePriceFromKuCoin(sym),
+        livePriceFromGateIO(sym),
       ]);
 
-      const price = binancePrice ?? kucoinPrice;
+      const price = binancePrice ?? gatePrice;
       if (typeof price === "number" && price > 0) {
         filled[id] = price;
       }
@@ -140,17 +140,17 @@ async function livePriceFromBinance(symbol: string): Promise<number | null> {
   }
 }
 
-/** Fetches the latest SYMBOL-USDT spot price from KuCoin's public ticker endpoint. */
-async function livePriceFromKuCoin(symbol: string): Promise<number | null> {
+/** Fetches the latest SYMBOL-USDT spot price from Gate.io's public tickers endpoint. */
+async function livePriceFromGateIO(symbol: string): Promise<number | null> {
   try {
-    const pair = `${symbol}-USDT`;
+    const pair = `${symbol}_USDT`;
     const res = await fetch(
-      `https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${encodeURIComponent(pair)}`
+      `https://api.gateio.ws/api/v4/spot/tickers?currency_pair=${encodeURIComponent(pair)}`
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (data?.code !== "200000") return null;
-    const price = parseFloat(data?.data?.price);
+    const ticker = Array.isArray(data) ? data[0] : null;
+    const price = parseFloat(ticker?.last);
     return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
     return null;
@@ -185,7 +185,7 @@ export interface HistoricalPriceResult {
 
 // A single wrong/stale number from one provider must never reach the ledger,
 // so a price only counts as "real" once two of the independent sources
-// (CoinGecko, Binance, Coinbase, KuCoin) agree within this relative
+// (CoinGecko, Binance, Coinbase, Gate.io) agree within this relative
 // tolerance. Daily closes across venues rarely match to the cent, so this is
 // a percentage band rather than a literal decimal match.
 //
@@ -204,13 +204,13 @@ export const PRICE_PROVIDERS = [
   "CoinGecko",
   "Binance",
   "Coinbase",
-  "KuCoin",
+  "Gate.io",
 ] as const;
 export type PriceProvider = (typeof PRICE_PROVIDERS)[number];
 
 /**
  * Returns the coin's USD price on a specific ISO date (YYYY-MM-DD) by querying
- * CoinGecko, Binance, Coinbase, and KuCoin in parallel and requiring at
+ * CoinGecko, Binance, Coinbase, and Gate.io in parallel and requiring at
  * least two of the four to agree (within AGREEMENT_TOLERANCE) before trusting
  * the value. Returns null if fewer than two independent sources corroborate
  * each other — the caller is expected to retry rather than accept an
@@ -240,7 +240,7 @@ export async function getPriceOnDate(
     track("CoinGecko", cgHistoryPrice(coinId, isoDate)),
     track("Binance", binanceKlinePrice(coinSymbol, isoDate)),
     track("Coinbase", coinbaseCandlePrice(coinSymbol, isoDate)),
-    track("KuCoin", kucoinKlinePrice(coinSymbol, isoDate)),
+    track("Gate.io", gateioCandlePrice(coinSymbol, isoDate)),
   ]);
 
   const candidates = results.filter(
@@ -335,11 +335,13 @@ async function coinbaseCandlePrice(
   }
 }
 
-// KuCoin's public candles endpoint — another independent venue with broad
+// Gate.io's public spot candlesticks endpoint — a CORS-open venue with broad
 // altcoin coverage (including many symbols Binance/Coinbase don't list).
-// Response rows are [time, open, close, high, low, volume, turnover] — note
-// close is index 2 here, not the OHLC-standard index 4 the other venues use.
-async function kucoinKlinePrice(
+// Unlike KuCoin (which sends no Access-Control-Allow-Origin headers and is
+// therefore unreachable from the browser), Gate.io allows cross-origin reads.
+// Response rows are [time, quoteVolume, close, high, low, open, baseVolume,
+// tradeCount] — close is index 2.
+async function gateioCandlePrice(
   symbol: string,
   isoDate: string
 ): Promise<number | null> {
@@ -347,17 +349,15 @@ async function kucoinKlinePrice(
   const dayStart = Math.floor(new Date(isoDate + "T00:00:00Z").getTime() / 1000);
   if (!Number.isFinite(dayStart)) return null;
   const dayEnd = dayStart + 24 * 3600 - 1;
-  const pair = `${symbol.toUpperCase()}-USDT`;
+  const pair = `${symbol.toUpperCase()}_USDT`;
   try {
     const res = await fetch(
-      `https://api.kucoin.com/api/v1/market/candles?type=1day&symbol=${encodeURIComponent(pair)}&startAt=${dayStart}&endAt=${dayEnd}`
+      `https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${encodeURIComponent(pair)}&interval=1d&from=${dayStart}&to=${dayEnd}`
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (data?.code !== "200000") return null;
-    const rows = data?.data as string[][] | undefined;
-    if (!rows || rows.length === 0) return null;
-    const price = parseFloat(rows[0][2]);
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const price = parseFloat(data[0][2]);
     return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
     return null;
