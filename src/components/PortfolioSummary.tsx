@@ -204,13 +204,13 @@ function StatCard({
     <div className="rounded-2xl bg-secondary/60 px-4 py-3.5">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p
-        className="mt-1.5 font-mono tabular text-2xl font-bold tracking-[-0.015em]"
+        className="mt-1.5 text-right font-mono tabular text-2xl font-bold tracking-[-0.015em]"
         style={{ color }}
       >
         {value}
       </p>
       <p
-        className="mt-1 font-mono tabular text-[0.7rem] font-medium"
+        className="mt-1 text-right font-mono tabular text-[0.7rem] font-medium"
         style={{ color: color ?? "var(--muted-foreground)" }}
       >
         {hint}

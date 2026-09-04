@@ -1,8 +1,15 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, Menu, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AddHoldingDialog } from "@/components/AddHoldingDialog";
+import { DeleteHoldingDialog } from "@/components/DeleteHoldingDialog";
 import { CoinMark } from "@/components/CoinMark";
 import {
   formatCurrency,
@@ -85,8 +92,9 @@ export function HoldingsLedger({
         </div>
 
         {/* Column heads */}
-        <div className="hidden grid-cols-[2.4fr_1.2fr_1.2fr_1.2fr_1.4fr] gap-5 border-b border-border px-4 pb-3 text-[0.7rem] font-semibold tracking-wider text-muted-foreground uppercase md:grid">
+        <div className="hidden md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] gap-5 border-b border-border px-4 pb-3 text-[0.7rem] font-semibold tracking-wider text-muted-foreground uppercase md:grid">
           <span>Asset</span>
+          <span className="text-right">Price</span>
           <span className="text-right">Day one</span>
           <span className="text-right">Today</span>
           <span className="text-right">Δ / day</span>
@@ -147,6 +155,8 @@ interface PositionRowProps {
 }
 
 function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const hasPrice = price !== undefined;
   const day1 = initialValue(holding);
   const today = hasPrice ? currentValue(holding, price) : day1;
@@ -161,7 +171,7 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
     dayDelta === 0 ? "var(--muted-foreground)" : dayDelta > 0 ? "var(--gain)" : "var(--loss)";
 
   return (
-    <div className="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl px-2 py-3 transition-colors hover:bg-secondary md:grid-cols-[2.4fr_1.2fr_1.2fr_1.2fr_1.4fr] md:gap-5 md:px-4">
+    <div className="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-2xl px-2 py-3 transition-colors hover:bg-secondary md:[grid-template-columns:2.2fr_1fr_1fr_1fr_1fr_1.3fr] md:gap-5 md:px-4">
       {/* Asset */}
       <div className="flex items-center gap-3.5 md:gap-4">
         <CoinMark
@@ -177,6 +187,11 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
             {holding.coinSymbol.toUpperCase()} · {days}d · {formatShort(holding.amount)}
           </p>
         </div>
+      </div>
+
+      {/* Price now (unit) */}
+      <div className="hidden text-right font-mono tabular text-sm font-semibold md:block">
+        {hasPrice ? formatCurrency(price!) : <span className="text-muted-foreground">—</span>}
       </div>
 
       {/* Day one */}
@@ -220,30 +235,52 @@ function PositionRow({ holding, price, onUpdate, onDelete }: PositionRowProps) {
           )}
         </div>
 
-        <div className="ml-2 flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="ml-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-xl"
+                  id={`row-menu-${holding.id}`}
+                >
+                  <Menu className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                id={`edit-holding-${holding.id}`}
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                id={`delete-holding-${holding.id}`}
+                variant="destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <AddHoldingDialog
             editHolding={holding}
             onSubmit={(data) => holding.id && onUpdate(holding.id, data)}
-            trigger={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="rounded-xl"
-                id={`edit-holding-${holding.id}`}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            }
+            open={editOpen}
+            onOpenChange={setEditOpen}
           />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-xl text-muted-foreground hover:text-[color:var(--loss)]"
-            onClick={() => holding.id && onDelete(holding.id)}
-            id={`delete-holding-${holding.id}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <DeleteHoldingDialog
+            holding={holding}
+            price={price}
+            onConfirm={() => holding.id && onDelete(holding.id)}
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+          />
         </div>
       </div>
     </div>
