@@ -17,7 +17,7 @@ honor its STOP conditions, and update your row when done.
 | 007  | Memoize PortfolioSummary aggregations | P2 | S | LOW | — | DONE |
 | 008  | Fix usePortfolioHistory stale closure | P1 | M | MED | — | DONE |
 | 009  | Remove dead code (formatPercent + table.tsx) | P3 | S | LOW | 002 | DONE |
-| 010  | Create PortfolioProvider context | P2 | M | MED | 006 | TODO |
+| 010  | Create PortfolioProvider context | P2 | M | MED | 006 | DONE |
 
 ## Dependency notes
 
